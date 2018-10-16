@@ -41,9 +41,11 @@ pub trait Language {
   fn punctuation() -> Vec<Punctuation<Self::Kind>> {
     vec![]
   }
+  #[allow(unused_variables)]
   fn peek_token(&self, text: &str) -> Option<(Self::Kind, usize)> {
     None
   }
+  #[allow(unused_variables)]
   fn skip_comments(&self, text: &str) -> Option<usize> {
     None
   }
@@ -180,20 +182,17 @@ impl<'a, L: Language> TokenStream<'a, L> {
   ///
   /// Returns the character that was swallowing
   pub fn swallow_token(&mut self) -> Option<char> {
-    match self.next_char() {
-      Some(val) => match val {
-        '\n' => {
-          self.next_line();
-          Some(val)
-        }
-        _ => {
-          self.off += 1;
-          self.position.column += 1;
-          Some(val)
-        }
-      },
-      None => None,
-    }
+    return self.next_char().map(|val| match val {
+      '\n' => {
+        self.next_line();
+        val
+      }
+      _ => {
+        self.off += 1;
+        self.position.column += 1;
+        val
+      }
+    });
   }
 
   fn swallow_n_tokens(&mut self, num: usize) -> usize {
@@ -276,40 +275,45 @@ impl<'a, L: Language> TokenStream<'a, L> {
 
   fn skip_whitespace(&mut self) {
     // This code is really messy, need to clean it up a bit.
-    let mut iter = self.buf[self.off..].char_indices();
-    let idx = loop {
-      let (idx, cur_char) = match iter.next() {
+    let mut iter = self.buf[self.off..].chars();
+    loop {
+      if let Some(comment_chars) = self.language.skip_comments(iter.as_str()) {
+        self.swallow_n_tokens(comment_chars);
+        iter = self.buf[self.off..].chars();
+        continue;
+      }
+
+      let cur_char = match iter.next() {
         Some(pair) => pair,
         None => {
-          break self.buf.len() - self.off;
+          self.off += self.buf.len() - self.off;
+          break;
         }
       };
 
-      if let Some(comment_chars) = self.language.skip_comments(iter.as_str()) {
-        self.swallow_n_tokens(comment_chars);
-        iter = self.buf[self.off..].char_indices();
-      }
-
       match cur_char {
         '\u{feff}' | '\r' => {
+          self.off += 1;
           continue;
         }
         '\t' => {
           self.position.column += 2;
+          self.off += 1;
         }
         '\n' => {
           self.position.column = 1;
           self.position.line += 1;
+          self.off += 1;
         }
         ' ' => {
           self.position.column += 1;
+          self.off += 1;
         }
         _ => {
-          break idx;
+          break;
         }
       }
-    };
-    self.off += idx;
+    }
   }
 
   #[allow(dead_code)]
@@ -379,7 +383,7 @@ mod tests {
       ]
     }
     fn peek_token(&self, text: &str) -> Option<(Kind, usize)> {
-      let mut iter = text.char_indices();
+      let mut iter = text.char_indices().peekable();
 
       let cur_char = match iter.next() {
         Some((_, cur_char)) => cur_char,
@@ -388,26 +392,32 @@ mod tests {
 
       match cur_char {
         'a'...'z' => {
-          while let Some((idx, cur_char)) = iter.next() {
+          let len = loop {
+            let (idx, cur_char) = match iter.next() {
+              Some(pair) => pair,
+              None => break text.len(),
+            };
             match cur_char {
               'a'...'z' => continue,
-              _ => return Some((Kind::Ident, idx)),
+              _ => break idx,
             }
-          }
+          };
+
+          return Some((Ident, len));
         }
         '0'...'9' => {
-          while let Some((idx, cur_char)) = iter.next() {
-            println!("Inside of intvalue {:?}", cur_char);
+          let len = loop {
+            let (idx, cur_char) = match iter.next() {
+              Some(pair) => pair,
+              None => break text.len(),
+            };
             match cur_char {
-              '0'...'9' => {
-                continue;
-              }
-              _ => {
-                println!("Returning intvalue {}", idx);
-                return Some((Kind::IntValue, idx));
-              }
+              '0'...'9' => continue,
+              _ => break idx,
             }
-          }
+          };
+
+          return Some((IntValue, len));
         }
         _ => {}
       }
@@ -418,12 +428,16 @@ mod tests {
         return None;
       }
       let mut iter = text.char_indices();
-      while let Some((idx, _)) = iter.next() {
+      let len = loop {
+        let (idx, _) = match iter.next() {
+          Some(pair) => pair,
+          None => break text.len(),
+        };
         if iter.as_str().starts_with("*/") {
-          return Some(idx + 4);
+          break idx + 3;
         }
-      }
-      return None;
+      };
+      return Some(len);
     }
   }
   fn tok_str(s: &str) -> Vec<&str> {
@@ -450,18 +464,53 @@ mod tests {
     }
     return r;
   }
+  use self::Kind::*;
+
+  fn assert_tokens(text: &str, types: &[Kind], tokens: &[&str]) {
+    assert_eq!(tok_typ(text), types);
+    assert_eq!(tok_str(text), tokens);
+  }
 
   #[test]
-  fn test_simple_tokenizer() {
-    use self::Kind::*;
-    let test = "prOgrAM var abc /* comment */ a /* comment : 123 */ azd := : = 123 ";
-    assert_eq!(
-      tok_typ(test),
-      [Program, Var, Ident, Ident, Ident, Assign, Colon, Equal, IntValue]
+  fn test_idents() {
+    assert_tokens(
+      "abc a b zz",
+      &[Ident, Ident, Ident, Ident],
+      &["abc", "a", "b", "zz"],
     );
-    assert_eq!(
-      tok_str(test),
-      ["prOgrAM", "var", "abc", "a", "azd", ":=", ":", "=", "123"]
+  }
+
+  #[test]
+  fn test_numbers() {
+    assert_tokens(
+      "123 321 444",
+      &[IntValue, IntValue, IntValue],
+      &["123", "321", "444"],
     );
+  }
+
+  #[test]
+  fn test_symbols() {
+    assert_tokens(":= : =", &[Assign, Colon, Equal], &[":=", ":", "="])
+  }
+
+  #[test]
+  fn test_keywords() {
+    assert_tokens(
+      "prOgrAM program var PROGRAM",
+      &[Program, Program, Var, Program],
+      &["prOgrAM", "program", "var", "PROGRAM"],
+    )
+  }
+
+  #[test]
+  fn test_comments() {
+    assert_tokens(
+      "/**
+    comment
+    **/a/* other comment*/bc /**//**/ cd",
+      &[Ident, Ident, Ident],
+      &["a", "bc", "cd"],
+    )
   }
 }

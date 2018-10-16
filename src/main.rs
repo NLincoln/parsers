@@ -1,6 +1,6 @@
 extern crate combine;
 
-use combine::{parser, Parser, Positioned, StreamOnce};
+use combine::{Positioned, StreamOnce};
 
 mod tokenizer;
 
@@ -58,10 +58,10 @@ impl Language for Sql {
     .map(|punc| Punctuation::create(punc.0, punc.1))
     .collect()
   }
-  fn peek_token(&self, text: &str) -> Option<(Self::Kind, usize)> {
+  fn peek_token(&self, _text: &str) -> Option<(Self::Kind, usize)> {
     None
   }
-  fn skip_comments(&self, text: &str) -> Option<usize> {
+  fn skip_comments(&self, _text: &str) -> Option<usize> {
     None
   }
 }
