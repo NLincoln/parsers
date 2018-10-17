@@ -1,0 +1,9 @@
+[package]
+name = "libexpr"
+version = "0.1.0"
+authors = ["Nathan <nlincoln@intellifarms.com>"]
+edition = "2018"
+
+[dependencies]
+combine = "3.6"
+tokenizer = { path = "../tokenizer" }

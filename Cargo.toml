@@ -1,2 +1,2 @@
 [workspace]
-members = ["tokenizer", "libsql"]
+members = ["tokenizer", "libsql", "libexpr"]
