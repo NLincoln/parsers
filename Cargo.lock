@@ -36,6 +36,14 @@ version = "0.2.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "libsql"
+version = "0.1.0"
+dependencies = [
+ "combine 3.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokenizer 0.1.0",
+]
+
+[[package]]
 name = "memchr"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -46,7 +54,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sql-rs"
+name = "tokenizer"
 version = "0.1.0"
 dependencies = [
  "combine 3.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
