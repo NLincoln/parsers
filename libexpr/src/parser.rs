@@ -58,7 +58,7 @@ fn intconst<'a>() -> impl Parser<Input = TokenStream<'a>, Output = u32> {
 fn statement<'a>(input: &mut TokenStream<'a>) -> ParseResult<'a, Statement<'a>> {
   use combine::parser;
   use combine::parser::choice::{choice, optional};
-  let assign = (variable(), token(Kind::EqualSign), expr())
+  let assign = (parser(expr_variable), token(Kind::EqualSign), expr())
     .map(|(lhs, _, rhs)| Statement::Assign { lhs, rhs });
   let r#while = (
     token(Kind::While),
@@ -325,7 +325,7 @@ mod tests {
     assert_eq!(
       parse_good_str(parser(statement), "foo = x + 1"),
       Statement::Assign {
-        lhs: Variable::Simple(Ident::create("foo")),
+        lhs: ExprVariable::Simple(Ident::create("foo")),
         rhs: Expr::Addition {
           var: ExprVariable::Simple(Ident::create("x")),
           integer: 1
@@ -344,7 +344,7 @@ mod tests {
           rhs: Expr::IntConst(10)
         },
         body: Box::new(Statement::Assign {
-          lhs: Variable::Simple(Ident::create("x")),
+          lhs: ExprVariable::Simple(Ident::create("x")),
           rhs: Expr::Addition {
             var: ExprVariable::Simple(Ident::create("x")),
             integer: 1
@@ -368,7 +368,7 @@ mod tests {
           rhs: Expr::IntConst(5)
         },
         truthey: Box::new(Statement::Assign {
-          lhs: Variable::Simple(Ident::create("x")),
+          lhs: ExprVariable::Simple(Ident::create("x")),
           rhs: Expr::Addition {
             var: ExprVariable::Simple(Ident::create("y")),
             integer: 5
@@ -396,14 +396,14 @@ mod tests {
           rhs: Expr::IntConst(5)
         },
         truthey: Box::new(Statement::Assign {
-          lhs: Variable::Simple(Ident::create("x")),
+          lhs: ExprVariable::Simple(Ident::create("x")),
           rhs: Expr::Addition {
             var: ExprVariable::Simple(Ident::create("y")),
             integer: 5
           }
         }),
         falsey: Some(Box::new(Statement::Assign {
-          lhs: Variable::Simple(Ident::create("x")),
+          lhs: ExprVariable::Simple(Ident::create("x")),
           rhs: Expr::Addition {
             var: ExprVariable::Simple(Ident::create("y")),
             integer: 1

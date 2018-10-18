@@ -25,7 +25,7 @@ pub enum Variable<'a> {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement<'a> {
   Assign {
-    lhs: Variable<'a>,
+    lhs: ExprVariable<'a>,
     rhs: Expr<'a>,
   },
   While {

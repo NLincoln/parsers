@@ -105,7 +105,7 @@ pub mod ir {
 
   impl<'a> Program<'a> {
     pub fn from_ast(ast: &'a ast::Program<'a>) -> Program<'a> {
-      let program = Program {
+      let mut program = Program {
         ast,
         labels: vec![],
         addresses: vec![],
@@ -115,6 +115,8 @@ pub mod ir {
         temp_var_counter: Counter::new(),
       };
 
+      let instructions = program.program_ir(ast);
+      program.instructions = instructions;
       program
     }
 
@@ -127,22 +129,40 @@ pub mod ir {
       })
     }
 
+    fn program_ir(&mut self, program: &ast::Program) -> Vec<Instruction> {
+      let mut result = Vec::new();
+      for stmt in program.body.iter() {
+        result.append(&mut self.statement_ir(&stmt));
+      }
+      return result;
+    }
+
+    fn statement_ir(&mut self, statement: &ast::Statement) -> Vec<Instruction> {
+      match statement {
+        ast::Statement::Assign { lhs, rhs } => {
+          let (lhs, lhs_inst) = self.expr_variable_ir(lhs);
+          lhs_inst
+        }
+        _ => unimplemented!(),
+      }
+    }
+
     fn expr_variable_ir(&mut self, expr: &ast::ExprVariable) -> (Rc<Address>, Vec<Instruction>) {
       match expr {
         ast::ExprVariable::Simple(ident) => (Rc::new(Address::Named(ident.get().into())), vec![]),
         ast::ExprVariable::Indexed { name, indexes } => {
+          let indexes: Vec<_> = indexes.iter().map(|index| self.expr_ir(index)).collect();
+
+          let mut result: Vec<Instruction> = Vec::new();
           let ast_info = self
             .look_up_variable(name)
             .expect(format!("Unknown variable {}", name.get()).as_str());
 
           let ast_indexes = match ast_info {
             ast::Variable::Simple(_) => panic!("Cannot index into a non-array"),
-            // TODO (2018-10-17) is it possible to remove this clone?
+            // TODO(2018-10-18): Can we get rid of this clone?
             ast::Variable::Indexed { indexes, .. } => indexes.clone(),
           };
-
-          let indexes: Vec<_> = indexes.iter().map(|index| self.expr_ir(index)).collect();
-          let mut result: Vec<Instruction> = Vec::new();
 
           for (i, (addr, mut instructions)) in indexes.into_iter().enumerate() {
             result.append(&mut instructions);
