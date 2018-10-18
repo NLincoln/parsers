@@ -1,3 +1,5 @@
+use std::fmt::{self, Display};
+
 #[derive(Debug, PartialEq)]
 pub struct Program<'a> {
   pub variables: Vec<Variable<'a>>,
@@ -13,6 +15,12 @@ impl<'a> Ident<'a> {
   }
   pub fn get(&self) -> &str {
     self.0
+  }
+}
+
+impl<'a> Display for Ident<'a> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{}", self.0)
   }
 }
 
@@ -49,7 +57,6 @@ pub enum RelativeOp {
   Eq,
 }
 
-use std::fmt::Display;
 impl Display for RelativeOp {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     use self::RelativeOp::*;

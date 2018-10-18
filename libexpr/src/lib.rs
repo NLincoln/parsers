@@ -67,14 +67,7 @@ pub mod ir {
       cond: Rc<Address>,
       label: Label,
     },
-    AssignToArray {
-      array: Index,
-      value: Rc<Address>,
-    },
-    AssignFromArray {
-      array: Index,
-      value: Rc<Address>,
-    },
+    Assign(Rc<Address>, Rc<Address>),
   }
 
   use crate::ast;
@@ -140,7 +133,12 @@ pub mod ir {
     fn statement_ir(&mut self, statement: &ast::Statement) -> Vec<Instruction> {
       match statement {
         ast::Statement::Assign { lhs, rhs } => {
-          let (lhs, lhs_inst) = self.expr_variable_ir(lhs);
+          let (lhs, mut lhs_inst) = self.expr_variable_ir(lhs);
+          let (rhs, mut rhs_inst) = self.expr_ir(rhs);
+          lhs_inst.append(&mut rhs_inst);
+
+          lhs_inst.push(Instruction::Assign(lhs, rhs));
+
           lhs_inst
         }
         _ => unimplemented!(),
@@ -164,20 +162,38 @@ pub mod ir {
             ast::Variable::Indexed { indexes, .. } => indexes.clone(),
           };
 
+          let mut temp_stack: Vec<Rc<Address>> = Vec::new();
+
           for (i, (addr, mut instructions)) in indexes.into_iter().enumerate() {
             result.append(&mut instructions);
             let temp = self.get_temp_var();
+            temp_stack.push(temp.clone());
 
             result.push(Instruction::Operation {
               destination: temp,
               operator: Operator::Multiply(
                 addr.clone(),
-                Rc::new(Address::Integer(width_of_index(&ast_indexes[i..]))),
+                Rc::new(Address::Integer(width_of_index(&ast_indexes[i + 1..]))),
               ),
-            })
+            });
+          }
+          while temp_stack.len() >= 2 {
+            // Can unwrap because we know we have two variables.
+            let a = temp_stack.pop().unwrap();
+            let b = temp_stack.pop().unwrap();
+            let temp = self.get_temp_var();
+
+            let inst = Instruction::Operation {
+              destination: temp.clone(),
+              operator: Operator::Add(b, a),
+            };
+            temp_stack.push(temp);
+            result.push(inst);
           }
 
-          (Rc::new(Address::Named("TODO".into())), result)
+          let addr_name = format!("{}[{}]", name, temp_stack[0]);
+
+          (Rc::new(Address::Named(addr_name)), result)
         }
       }
     }
@@ -185,8 +201,17 @@ pub mod ir {
     fn expr_ir(&mut self, expr: &ast::Expr) -> (Rc<Address>, Vec<Instruction>) {
       match expr {
         ast::Expr::IntConst(num) => (Rc::new(Address::Integer(*num)), vec![]),
-        ast::Expr::Variable(expr_variable) => unimplemented!(),
-        _ => unimplemented!(),
+        ast::Expr::Variable(expr_variable) => self.expr_variable_ir(expr_variable),
+        ast::Expr::Addition { var, integer } => {
+          let temp = self.get_temp_var();
+          let (variable, mut instructions) = self.expr_variable_ir(var);
+          let inst = Instruction::Operation {
+            destination: temp.clone(),
+            operator: Operator::Add(variable, Rc::new(Address::Integer(*integer))),
+          };
+          instructions.push(inst);
+          (temp, instructions)
+        }
       }
     }
 
@@ -285,8 +310,7 @@ pub mod ir {
   impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
       match self {
-        Instruction::AssignFromArray { array, value } => write!(f, "{} = {}", array, value),
-        Instruction::AssignToArray { array, value } => write!(f, "{} = {}", value, array),
+        Instruction::Assign(lhs, rhs) => write!(f, "{} = {}", lhs, rhs),
         Instruction::Goto(dest) => write!(f, "goto {}", dest),
         Instruction::Label(name) => write!(f, "{}:", name),
         Instruction::If { cond, label } => write!(f, "if {} == false goto {}", cond, label),
@@ -343,10 +367,11 @@ pub mod ir {
         format!("{}", program),
         "t1 = 2 * 120
 t2 = 5 * 12
-t3 = t1 + t2
-t4 = 1 * 4
-t5 = t3 + t4
-C[t5] = 7"
+t3 = 1 * 4
+t4 = t2 + t3
+t5 = t1 + t4
+C[t5] = 7
+"
       )
     }
   }
