@@ -1,6 +1,7 @@
 use combine::error::Tracked;
 use combine::stream::easy::{Error, Errors, Info};
 use combine::{satisfy, ConsumedResult, Parser};
+use crate::ast::*;
 use std::marker::PhantomData;
 use tokenizer::{Pos, Token};
 
@@ -9,11 +10,6 @@ pub fn parse<'a>(input: &'a str) -> ParseResult<'a, Program<'a>> {
   program(&mut tokenstream)
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Program<'a> {
-  pub variables: Vec<Variable<'a>>,
-  pub body: Vec<Statement<'a>>,
-}
 fn program<'a>(input: &mut TokenStream<'a>) -> ParseResult<'a, Program<'a>> {
   use combine::parser;
   use combine::parser::repeat::many1;
@@ -33,26 +29,8 @@ fn program<'a>(input: &mut TokenStream<'a>) -> ParseResult<'a, Program<'a>> {
     }).parse_stream(input)
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Ident<'a>(&'a str);
-
 fn ident<'a>() -> impl Parser<Input = TokenStream<'a>, Output = Ident<'a>> {
   token(Kind::Ident).map(|token| Ident::create(token.value))
-}
-
-impl<'a> Ident<'a> {
-  pub fn create(text: &'a str) -> Self {
-    Ident(text)
-  }
-  pub fn get(&self) -> &str {
-    self.0
-  }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Variable<'a> {
-  Simple(Ident<'a>),
-  Indexed { name: Ident<'a>, indexes: Vec<u32> },
 }
 
 fn variable<'a>() -> impl Parser<Input = TokenStream<'a>, Output = Variable<'a>> {
@@ -75,23 +53,6 @@ fn variable<'a>() -> impl Parser<Input = TokenStream<'a>, Output = Variable<'a>>
 
 fn intconst<'a>() -> impl Parser<Input = TokenStream<'a>, Output = u32> {
   token(Kind::IntConst).map(|token| token.value.parse().expect("Invalid int constant"))
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Statement<'a> {
-  Assign {
-    lhs: Variable<'a>,
-    rhs: Expr<'a>,
-  },
-  While {
-    cond: RelativeExpression<'a>,
-    body: Box<Statement<'a>>,
-  },
-  If {
-    cond: RelativeExpression<'a>,
-    truthey: Box<Statement<'a>>,
-    falsey: Option<Box<Statement<'a>>>,
-  },
 }
 
 fn statement<'a>(input: &mut TokenStream<'a>) -> ParseResult<'a, Statement<'a>> {
@@ -127,16 +88,6 @@ fn statement<'a>(input: &mut TokenStream<'a>) -> ParseResult<'a, Statement<'a>> 
   choice((assign, r#while, r#if)).parse_stream(input)
 }
 
-#[derive(Debug, PartialEq)]
-pub enum RelativeOp {
-  Lt,
-  Gt,
-  Lte,
-  Gte,
-  Ne,
-  Eq,
-}
-
 fn relative_op<'a>() -> impl Parser<Input = TokenStream<'a>, Output = RelativeOp> {
   use combine::parser::choice::choice;
   choice((
@@ -149,24 +100,8 @@ fn relative_op<'a>() -> impl Parser<Input = TokenStream<'a>, Output = RelativeOp
   ))
 }
 
-#[derive(Debug, PartialEq)]
-pub struct RelativeExpression<'a> {
-  pub op: RelativeOp,
-  pub lhs: Expr<'a>,
-  pub rhs: Expr<'a>,
-}
-
 fn relative_expr<'a>() -> impl Parser<Input = TokenStream<'a>, Output = RelativeExpression<'a>> {
   (expr(), relative_op(), expr()).map(|(lhs, op, rhs)| RelativeExpression { op, lhs, rhs })
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ExprVariable<'a> {
-  Simple(Ident<'a>),
-  Indexed {
-    name: Ident<'a>,
-    indexes: Vec<Expr<'a>>,
-  },
 }
 
 fn expr_variable<'a>(input: &mut TokenStream<'a>) -> ParseResult<'a, ExprVariable<'a>> {
@@ -185,13 +120,6 @@ fn expr_variable<'a>(input: &mut TokenStream<'a>) -> ParseResult<'a, ExprVariabl
     ),
     ident().map(ExprVariable::Simple),
   )).parse_stream(input)
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Expr<'a> {
-  IntConst(u32),
-  Variable(ExprVariable<'a>),
-  Addition { var: ExprVariable<'a>, integer: u32 },
 }
 
 fn expr<'a>() -> impl Parser<Input = TokenStream<'a>, Output = Expr<'a>> {
