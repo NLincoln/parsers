@@ -1,9 +1,27 @@
+//! Structs and enums comprising the AST of expr
+
 use std::fmt::{self, Display};
 
+/// The root-level type. After parsing a program, this
+/// is the type that is returned
+///
+/// The `variables` field can be used to look up any types that might be found
+/// in the program. Check out the `lookup_variable` method.
 #[derive(Debug, PartialEq)]
 pub struct Program<'a> {
   pub variables: Vec<Variable<'a>>,
   pub body: Vec<Statement<'a>>,
+}
+
+impl<'a> Program<'a> {
+  pub fn look_up_variable(&self, name: &Ident) -> Option<&Variable<'a>> {
+    self.variables.iter().find(|var| match var {
+      Variable::Simple(ref ident) => ident == name,
+      Variable::Indexed {
+        name: ref ident, ..
+      } => ident == name,
+    })
+  }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -96,4 +114,29 @@ pub enum Expr<'a> {
   IntConst(u32),
   Variable(ExprVariable<'a>),
   Addition { var: ExprVariable<'a>, integer: u32 },
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  #[test]
+  fn test_lookup_variable() {
+    let input = "
+        x; y[1]; z[2][3];
+        { x = x + 1; }";
+    let parsed = crate::parser::parse(input).unwrap().0;
+    assert_eq!(
+      parsed.look_up_variable(&Ident::create("z")),
+      Some(&Variable::Indexed {
+        name: Ident::create("z"),
+        indexes: vec![2, 3]
+      })
+    );
+    assert_eq!(
+      parsed.look_up_variable(&Ident::create("x")),
+      Some(&Variable::Simple(Ident::create("x")))
+    );
+    assert_eq!(parsed.look_up_variable(&Ident::create("not_there")), None);
+  }
+
 }

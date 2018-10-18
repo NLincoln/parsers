@@ -1,17 +1,16 @@
+//! `expr` is a simple language. It looks like the following:
+//! ```expr
+//! B[5][4][3]; C; x;
+//! {
+//!   B[1][2][2] = C + 4;
+//!   while (x < 10) x = x + 1;
+//! }
+//! ```
+
 extern crate combine;
 extern crate tokenizer;
 
 pub mod ast;
-/**
- * `expr` is a simple language. It looks like the following:
- * ```expr
- * var B[5][4][3]; C; x;
- * {
- *   B[1][2][2] = C + 4;
- *   while (x < 10) x = x + 1;
- * }
- * ```
- */
 pub mod parser;
 
 /**
@@ -85,6 +84,11 @@ pub mod ir {
     }
   }
 
+  /// An expr program in a form that is ready for
+  /// optimization, execution, and compilation.
+  ///
+  /// The program you give is immediately translated
+  /// upon creating the `Program` struct.
   #[derive(Debug)]
   pub struct Program<'a> {
     ast: &'a ast::Program<'a>,
@@ -111,15 +115,6 @@ pub mod ir {
       let instructions = program.program_ir(ast);
       program.instructions = instructions;
       program
-    }
-
-    fn look_up_variable(&self, name: &ast::Ident) -> Option<&ast::Variable> {
-      self.ast.variables.iter().find(|var| match var {
-        ast::Variable::Simple(ref ident) => ident == name,
-        ast::Variable::Indexed {
-          name: ref ident, ..
-        } => ident == name,
-      })
     }
 
     fn program_ir(&mut self, program: &ast::Program) -> Vec<Instruction> {
@@ -153,6 +148,7 @@ pub mod ir {
 
           let mut result: Vec<Instruction> = Vec::new();
           let ast_info = self
+            .ast
             .look_up_variable(name)
             .expect(format!("Unknown variable {}", name.get()).as_str());
 
@@ -253,9 +249,11 @@ pub mod ir {
   /// Returns the amount that an array of this type
   /// should be multiplied to get the final index.
   /// E.g.
+  /// ```plaintext
   ///      [] -> 4
   ///      [3, 4] -> 48
   ///      [10, 3, 4] -> 480
+  /// ```
   fn width_of_index(indexes: &[u32]) -> u32 {
     if indexes.len() == 0 {
       4
@@ -334,29 +332,6 @@ pub mod ir {
   #[cfg(test)]
   mod tests {
     use super::*;
-    #[test]
-    fn test_lookup_variable() {
-      let input = "
-        x; y[1]; z[2][3];
-        { x = x + 1; }";
-      let parsed = crate::parser::parse(input).unwrap().0;
-      let program = Program::from_ast(&parsed);
-      assert_eq!(
-        program.look_up_variable(&ast::Ident::create("z")),
-        Some(&ast::Variable::Indexed {
-          name: ast::Ident::create("z"),
-          indexes: vec![2, 3]
-        })
-      );
-      assert_eq!(
-        program.look_up_variable(&ast::Ident::create("x")),
-        Some(&ast::Variable::Simple(ast::Ident::create("x")))
-      );
-      assert_eq!(
-        program.look_up_variable(&ast::Ident::create("not_there")),
-        None
-      );
-    }
 
     #[test]
     fn test_variable_index() {
