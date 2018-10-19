@@ -164,7 +164,23 @@ pub mod ir {
 
           cond_inst
         }
-        _ => unimplemented!(),
+        ast::Statement::While { cond, body } => {
+          let top_label = self.get_label();
+          let out_label = self.get_label();
+          let mut inst = vec![Instruction::Label(top_label.clone())];
+          let (cond_addr, mut cond_inst) = self.relative_expr_ir(cond);
+          inst.append(&mut cond_inst);
+          inst.push(Instruction::If {
+            cond: cond_addr,
+            label: out_label.clone(),
+          });
+
+          inst.append(&mut self.statement_ir(body));
+          inst.push(Instruction::Goto(top_label));
+          inst.push(Instruction::Label(out_label));
+
+          inst
+        }
       }
     }
 
@@ -376,6 +392,21 @@ pub mod ir {
         eprintln!("{}", output_code);
         panic!();
       }
+    }
+
+    #[test]
+    fn test_while() {
+      assert_program_output(
+        "C; { while (C < 10) C = C + 1; }",
+        "L1:
+t1 = C < 10
+if t1 == false goto L2
+t2 = C + 1
+C = t2
+goto L1
+L2:
+",
+      )
     }
 
     #[test]
