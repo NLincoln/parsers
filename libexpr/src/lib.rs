@@ -54,9 +54,9 @@ pub mod ir {
   #[derive(Debug)]
   pub enum Instruction {
     /// A label in the output code
-    Label(Label),
+    Label(Rc<Label>),
     /// An instruction to go to a label
-    Goto(Label),
+    Goto(Rc<Label>),
     /// Add two numbers to something else, looks like a = x + 1
     Operation {
       destination: Rc<Address>,
@@ -64,7 +64,7 @@ pub mod ir {
     },
     If {
       cond: Rc<Address>,
-      label: Label,
+      label: Rc<Label>,
     },
     Assign(Rc<Address>, Rc<Address>),
   }
@@ -135,6 +135,34 @@ pub mod ir {
           lhs_inst.push(Instruction::Assign(lhs, rhs));
 
           lhs_inst
+        }
+        ast::Statement::If {
+          cond,
+          truthey,
+          falsey,
+        } => {
+          let (cond, mut cond_inst) = self.relative_expr_ir(cond);
+          let label_a = self.get_label();
+
+          cond_inst.push(Instruction::If {
+            cond,
+            label: label_a.clone(),
+          });
+          cond_inst.append(&mut self.statement_ir(truthey));
+          match falsey {
+            Some(falsey) => {
+              let label_b = self.get_label();
+              cond_inst.push(Instruction::Goto(label_b.clone()));
+              cond_inst.push(Instruction::Label(label_a));
+              cond_inst.append(&mut self.statement_ir(falsey));
+              cond_inst.push(Instruction::Label(label_b));
+            }
+            None => {
+              cond_inst.push(Instruction::Label(label_a));
+            }
+          }
+
+          cond_inst
         }
         _ => unimplemented!(),
       }
@@ -211,15 +239,18 @@ pub mod ir {
       }
     }
 
-    fn relative_expr_ir(&mut self, expr: &ast::RelativeExpression) -> Vec<Instruction> {
+    fn relative_expr_ir(
+      &mut self,
+      expr: &ast::RelativeExpression,
+    ) -> (Rc<Address>, Vec<Instruction>) {
       /*
        * Emit one instruction: the address of the result of the expr
        */
       let (lhs, mut lhs_inst) = self.expr_ir(&expr.lhs);
       let (rhs, mut rhs_inst) = self.expr_ir(&expr.rhs);
-
+      let addr = self.get_temp_var();
       let inst = Instruction::Operation {
-        destination: self.get_temp_var(),
+        destination: addr.clone(),
         operator: Operator::Relative {
           operands: (lhs, rhs),
           operator: expr.op.clone(),
@@ -231,7 +262,7 @@ pub mod ir {
       let mut result_inst = lhs_inst;
       result_inst.push(inst);
 
-      return result_inst;
+      return (addr, result_inst);
     }
 
     fn get_label(&mut self) -> Rc<Label> {
@@ -333,21 +364,62 @@ pub mod ir {
   mod tests {
     use super::*;
 
+    fn assert_program_output(code: &str, expected_output: &str) {
+      let parsed = crate::parser::parse(code).unwrap().0;
+      let program = Program::from_ast(&parsed);
+      let output_code = format!("{}", program);
+      if output_code != expected_output {
+        eprintln!("Serialized version of program instructions are incorrect.");
+        eprintln!("Expected:");
+        eprintln!("{}", expected_output);
+        eprintln!("But got:");
+        eprintln!("{}", output_code);
+        panic!();
+      }
+    }
+
+    #[test]
+    fn test_if() {
+      assert_program_output(
+        "C; { if C > 0 then C = C + 1; }",
+        "t1 = C > 0
+if t1 == false goto L1
+t2 = C + 1
+C = t2
+L1:
+",
+      )
+    }
+
+    #[test]
+    fn test_if_else() {
+      assert_program_output(
+        "C; { if C > 0 then C = C + 1 else C = C + 2; }",
+        "t1 = C > 0
+if t1 == false goto L1
+t2 = C + 1
+C = t2
+goto L2
+L1:
+t3 = C + 2
+C = t3
+L2:
+",
+      );
+    }
+
     #[test]
     fn test_variable_index() {
-      let input = "C[4][10][3]; { C[2][5][1] = 7; }";
-      let parsed = crate::parser::parse(input).unwrap().0;
-      let program = Program::from_ast(&parsed);
-      assert_eq!(
-        format!("{}", program),
+      assert_program_output(
+        "C[4][10][3]; { C[2][5][1] = 7; }",
         "t1 = 2 * 120
 t2 = 5 * 12
 t3 = 1 * 4
 t4 = t2 + t3
 t5 = t1 + t4
 C[t5] = 7
-"
-      )
+",
+      );
     }
   }
 
