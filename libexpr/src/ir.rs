@@ -3,9 +3,10 @@
  * These instructions can then be executed by the VM or compiled into source code
  */
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Address {
   Named(String),
+  Indexed { name: String, index: Rc<Address> },
   Integer(u32),
 }
 
@@ -76,7 +77,7 @@ impl Counter {
 /// upon creating the `Program` struct.
 #[derive(Debug)]
 pub struct Program<'a> {
-  ast: &'a ast::Program<'a>,
+  pub ast: &'a ast::Program<'a>,
   labels: Vec<Rc<Label>>,
   addresses: Vec<Rc<Address>>,
   instructions: Vec<Instruction>,
@@ -100,6 +101,20 @@ impl<'a> Program<'a> {
     let instructions = program.program_ir(ast);
     program.instructions = instructions;
     program
+  }
+
+  pub fn generated_variables(&self) -> Vec<String> {
+    self
+      .addresses
+      .iter()
+      .filter_map(|val| match (**val).clone() {
+        Address::Named(name) => Some(name),
+        _ => None,
+      }).collect()
+  }
+
+  pub fn instructions(&self) -> &[Instruction] {
+    self.instructions.as_slice()
   }
 
   fn program_ir(&mut self, program: &ast::Program) -> Vec<Instruction> {
@@ -216,9 +231,13 @@ impl<'a> Program<'a> {
           result.push(inst);
         }
 
-        let addr_name = format!("{}[{}]", name, temp_stack[0]);
-
-        (Rc::new(Address::Named(addr_name)), result)
+        (
+          Rc::new(Address::Indexed {
+            name: name.get().into(),
+            index: temp_stack[0].clone(),
+          }),
+          result,
+        )
       }
     }
   }
@@ -286,7 +305,7 @@ impl<'a> Program<'a> {
 ///      [3, 4] -> 48
 ///      [10, 3, 4] -> 480
 /// ```
-fn width_of_index(indexes: &[u32]) -> u32 {
+pub fn width_of_index(indexes: &[u32]) -> u32 {
   if indexes.len() == 0 {
     4
   } else {
@@ -315,6 +334,7 @@ impl Display for Address {
     match self {
       Address::Named(ident) => write!(f, "{}", ident),
       Address::Integer(num) => write!(f, "{}", num),
+      Address::Indexed { name, index } => write!(f, "{}[{}]", name, index),
     }
   }
 }

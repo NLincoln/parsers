@@ -11,5 +11,6 @@ extern crate combine;
 extern crate tokenizer;
 
 pub mod ast;
+pub mod interp;
 pub mod ir;
 pub mod parser;
